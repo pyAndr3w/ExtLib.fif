@@ -1,0 +1,189 @@
+/*
+  ExtLib.fif – open-source extended library for Fift
+
+  Copyright (C) 2023 pyAndr3w <gutarev01@gmail.com>
+
+  This file is part of ExtLib.fif.
+
+  ExtLib.fif is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  ExtLib.fif is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with ExtLib.fif.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+library ExtLib.fif // version 1.0.0
+
+
+// =======================================================================
+// ===============================-Ext-Lib-===============================
+// =======================================================================
+
+
+// x -- drop x times
+{ { drop } swap times } : dropx
+
+
+// print stack and stop execution
+{ .s 0 halt } : STOP
+
+
+// =======================================================================
+// ==============================-Tuple-Lib-==============================
+// =======================================================================
+
+
+// T f -- f(T'0), f(T'1), f(T'2), ..., f(T'n)
+{ swap dup count 0
+  { over over [] 3 pick execute 1+ }
+2 roll times 3 dropx } : []foreach
+
+
+// T f --> T[n] = f(T[n])
+{ swap dup count 0
+  { dup 2 pick swap [] 3 pick execute rot swap 2 pick []= swap 1+ }
+2 roll times rot 2drop  } : []map
+
+
+// T f -- newT
+{ | rot
+  { dup 6 pick execute
+    { 4 roll swap , 3 -roll }
+    { drop }
+  cond }
+[]foreach nip } : []filter
+
+
+// T X f --> X = f(X, T[n])
+{ rot
+  { 5 roll swap 5 pick execute 4 -roll }
+[]foreach drop } : []reduce
+
+
+// T -- x
+{ 0 { + } []reduce } : []sum
+
+
+// T -- x
+{ 1 { * } []reduce } : []mul
+
+
+// T -- x
+{ dup count swap []sum swap / } : []avg
+
+
+// =======================================================================
+// ==============================-Text-Lib-===============================
+// =======================================================================
+
+
+// new string declaration
+{ char } word } :_ ${
+
+// S x -- S'
+{ $| 1 $| rot 2drop } : $at
+
+
+// S x y -- S'
+{ over - -rot $| rot 1+ $| rot 2drop } : $sub
+
+
+// S x -- S*x
+{ "" { 2 pick $+ } 2 pick times -rot 2drop } : $mul
+
+
+// S -- S'0, S'1, S'2, ..., S'n
+{ | swap { 1 $| -rot , swap } 1 pick $len 1- times , } : $sybs
+
+
+// S x -- S[0:0+x], S[1:1+x], S[2:2+x], ..., S[n:n+x]
+{ | -rot 1- 0
+  { 2dup + 1 pick 4 pick -rot swap $sub 4 roll swap , 3 -roll 1+ }
+3 pick $len 3 pick - times 3 dropx } : $>>sybs
+
+
+// S f -- f(S'0), f(S'1), f(S'2), ..., f(S'n)
+{ swap
+  { 1 $| swap 2 pick execute }
+1 pick $len times 2drop } : $foreach
+
+
+// T(S) S1 -- S
+{ "" rot
+  {  4 roll 5 pick rot swap $+ $+ 3 -roll }
+[]foreach swap $len over $len swap - 1- 0 swap $sub } : $join
+
+
+// S f --> S[n] = f(S[n])
+{ swap $sybs swap []map "" $join  } : $map
+
+
+// S S1 -- x? ?
+{ dup $len -1 3 roll 2 roll $>>sybs
+  { 4 pick -1 =
+    { 5 pick $=
+      { dup 4 roll drop 3 -roll }
+    if }
+    { drop }
+  cond }
+[]foreach nip dup 0 > dup { nip } ifnot } : $find
+
+
+// S S1 -- T
+{ dup $len rot swap $>>sybs | swap
+  { 5 pick $=
+    { 3 roll over , 3 -roll }
+   if }
+[]foreach nip } : $findAll
+
+
+// S S' -- x
+{ $findAll count } : $subcnt
+
+
+// S S1 -- T(S)
+{ dup $len 2 -roll | 3 -roll 2dup $subcnt
+  { 2dup $find
+    { rot swap $| 3 pick $| nip -rot 4 roll swap , 3 -roll }
+  if }
+swap times rot 2drop , } : $split
+
+{ char ) word dup $len 2 - 0 swap $sub $split } :_ $split("
+
+
+// S S1 S2 -- S
+{ over $len 3 roll 3 roll over swap $find
+  { $| rot $| nip rot swap $+ $+ }
+  { -rot 2drop }
+cond } : $replace
+
+
+// S S1 S2 -- S
+{ -rot $split swap $join  } : $replaceAll
+
+
+// S T -- S
+{ 0 -rot
+  { 4 roll "{}" rot $replace 3 -roll }
+[]foreach nip } : $format
+
+
+// syntax for $at and $sub
+{ char ] word ":" $split dup count dup dup 2 > swap 1 < or
+  { abort"incorrect index count" }
+if swap
+  { (number)
+    { abort"incorrect index" }
+  ifnot }
+[]map swap 2 =
+  { unpair $sub }
+  { first $at }
+cond } :_ $[
+
