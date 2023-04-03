@@ -1,0 +1,49 @@
+"ExtLib.fif" include
+
+// Support functions ////////////////////////////////////
+{ .dump cr } : print
+{ swap .dump .dump cr } : 2print
+{ dup dup 1+ -roll exch { print } swap times } : printx
+// //////////////////////////////////////////////////////
+
+
+0 1 2 3 4 5 6 7 8 9                                                       ."source stack -> "  .s
+10 dropx                                                                  ."10 dropx -> `empty`" .s cr
+
+
+| 1 , 2 , 3 , 4 , 5 , 6 , 7 , 8 , 9 , 10 ,                                ."source tuple -> " .s
+
+dup { dup 5 > { 10 * } if } []map                                         ."[]map -> " print
+dup { 2 mod 0 = } []filter                                                ."[]filter -> " print
+dup 0 { dup 2 mod 0 <> { + } { drop } cond } []reduce                     ."[]reduce -> " print
+dup []avg ."[]avg -> " print
+dup []sum ."[]sum -> " print
+cr drop
+
+
+"qwertyuiopQWERTYUIOP"                                                    ."source string -> " .s
+
+dup $[7]                                                                  ."$at -> " print
+dup $[6:12]                                                               ."$sub -> " print
+dup 3 $mul                                                                ."$mul -> " print
+dup $sybs                                                                 ."$sybs -> " print
+dup 3 $>>sybs                                                             ."$>>sybs -> " print
+drop cr
+
+
+"Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo."
+                                                                          ."source string -> " .s cr
+
+dup "i" $find                                                             ."$find -> " 2print cr
+dup " " $findAll                                                          ."$findAll -> " print cr
+dup { over 5 mod 0 = { drop "*" } if } $map                               ."$map -> " print cr
+dup " a" $subcnt                                                          ."$subcnt -> " print cr
+dup $split(" ")                                                           ."$split -> " print cr
+dup " " " SPACE " $replace                                                ."$replace -> " print cr
+dup " " "" $replaceAll                                                    ."$replaceAll -> " print cr
+drop cr
+
+
+"My name is {}, I'm {} years old, I'm from {}."                           ."source string -> " .s
+| "John" , "25" , "USA" ,                                                 ."source tuple -> " dup .dump cr
+$format                                                                   ."$format -> " print
