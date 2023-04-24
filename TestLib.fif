@@ -1,0 +1,59 @@
+/*
+  TestLib.fif – open-source testing library for Fift
+
+  Copyright (C) 2023 pyAndr3w <gutarev01@gmail.com>
+
+  This file is part of ExtLib.fif.
+
+  ExtLib.fif is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  ExtLib.fif is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with ExtLib.fif.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+"ExtLib.fif" include
+
+
+variable TestLib::user-stack
+variable TestLib::test-name
+variable TestLib::test-stack
+variable TestLib::test-func
+variable TestLib::test-result
+variable TestLib::return-stack
+
+{ 34 word TestLib::test-name ! `test-stack 1 'nop } ::_ TEST{"
+{ `return-stack } : ->
+
+
+{
+  | swap { dup `return-stack eq? not } { []push-back swap } while drop
+  TestLib::return-stack ! TestLib::test-func !
+  | swap { dup `test-stack eq? not } { []push-back swap } while drop
+  TestLib::test-stack !
+  | { depth 1 > } { []push-back } while
+  TestLib::user-stack !
+  TestLib::test-stack @ explode drop TestLib::test-func @ execute
+  | { depth 1 > } { swap []push-back } while
+  TestLib::return-stack @ []cmp TestLib::test-result !
+  TestLib::user-stack @ explode drop TestLib::test-result @
+  { TestLib::test-name @ +" OK" type cr } { TestLib::test-name @ +" FAIL" type cr } cond
+} : }TEST
+
+
+// example
+/*
+TEST{"Tuple map test"
+    1 2 3 triple         // start stack
+    { { 1 + } 0 []map }  // test function
+    ->
+    2 3 4 triple         // result stack
+}TEST
+*/
