@@ -194,6 +194,15 @@ MetaStack::create(SC::stk)
 } : }>end-switch
 
 
+/*
+"qwerty" >switch:<{
+  { } >case:< { } >end-case
+  { } >case:< { } >end-case
+  { } >case:< { } >end-case
+}>end-switch
+*/
+
+
 // ============================================================================================= //
 // =====================================-Advanced-Tuple-Lib-==================================== //
 // ============================================================================================= //
@@ -392,19 +401,32 @@ variable 'DESER { 'DESER @ execute } : DESER
 
 
 // -- dict
-{ `dict dictnew dictnew triple } : {}new // key value store
+{ `dict dictnew dictnew pair box pair } : {}new // key value store
+
+
+// dict? -- -1 or 0
+{ dup tuple? { dup count { first `dict eq? } { drop 0 } cond } { drop 0 } cond } : {}?
+
+
+// dict -- T
+{ dup {}? not abort"{}set error: not a dict"
+  second @ unpair nip | swap 256 { s>c DESER rot swap , swap } dictforeach drop
+} : {}keys
 
 
 // dict key value -- dict
-{ SER swap SER dup hash dup // dict value key key-hash
-    4 roll dup second rot // value key dict D-value key-hash
-    5 roll <s -rot swap 256 udict! drop 1 []= // key key-hash dict
-    dup third swap 3 -roll rot <s -rot 256 udict! drop 2 []= // dict
+{ rot dup {}? not abort"{}set error: not a dict" 1 [] @ -rot
+  SER swap SER dup hash dup // dict value key key-hash
+  4 roll dup first rot // value key dict D-value key-hash
+  5 roll <s -rot swap 256 udict! drop 0 []= // key key-hash dict
+  dup second swap 3 -roll rot <s -rot 256 udict! drop 1 []= // dict
+  box `dict swap pair
 } : {}set
 
 
 // dict key -- value -1 or 0
-{ SER hash swap second 256 udict@ dup
+{ over {}? not abort"{}set error: not a dict" 
+  SER hash swap second @ first 256 udict@ dup
     { swap s>c DESER swap }
     if
 } : {}get
@@ -413,12 +435,6 @@ variable 'DESER { 'DESER @ execute } : DESER
 { } : {}foreach
 { } : {}reduce
 { } : {}map
-
-
-{ untriple -rot 2drop | swap 256 { s>c DESER rot swap , swap } dictforeach drop } : {}keys
-
-
-{ dup tuple? { dup count { first `dict eq? } { drop 0 } cond } { drop 0 } cond } : {}?
 
 
 // BOOLEANS ==============================================================
@@ -456,78 +472,50 @@ variable 'DESER { 'DESER @ execute } : DESER
 { <b STRPFX 4 u, swap 127 append-long-string b> } : SERSTR
 { <b INTPFX 4 u, swap 257 i, b> } : SERINT
 { dictnew { swap SER <s swap rot 1023 udict! drop } -1 []reduce <b LSTPFX 4 u, swap ref, b> } : SERLST
-{ untriple swap <b DCTPFX 4 u, swap ref, swap ref, b> nip } : SERDCT
+{ unpair nip @ unpair swap <b DCTPFX 4 u, swap dict, swap dict, b> } : SERDCT
 { ?unwrap <b BOLPFX 4 u, swap 1 i, b> } : SERBOL
 
 
 // X -- c
-{
-  dup null?
-    { SERNUL }
-    { dup string?
-      { SERSTR }
-      { dup integer?
-        { SERINT }
-        { dup tuple?
-          { dup count
-            { dup first dup `dict eq?
-              { drop SERDCT }
-              { dup `bool eq?
-                { drop SERBOL }
-                { drop SERLST }
-                cond
-              }
-              cond
-            }
-            { SERLST }
-            cond
-          }
-          { abort"WHO ARE YOU???" }
-          cond
-        }
-        cond
-      }
-      cond
-    }
-    cond
-} 'SER ! // serialize
+{ dup >switch:<{
+  { null?    } >case:< { SERNUL } >end-case
+  { string?  } >case:< { SERSTR } >end-case
+  { integer? } >case:< { SERINT } >end-case
+  { tuple?   } >case:< { dup count
+                          { dup first dup `dict eq?
+                            { drop SERDCT }
+                            { dup `bool eq?
+                              { drop SERBOL }
+                              { drop SERLST }
+                              cond
+                            }
+                            cond
+                          }
+                          { SERLST }
+                          cond
+  } >end-case
+  { drop -1  } >case:< { "WHO ARE YOU???" abort } >end-case
+}>end-switch } 'SER ! // serialize
 
 
 { drop null } : DESERNUL
 { read-long-string } : DESERSTR
 { 257 i@ } : DESERINT
 { ref@ | swap 1023 { dup integer? { nip s>c DESER swap over , nip 1 } ifnot } dictforeach drop } : DESERLST
-{ ref@+ swap ref@ `dict 2 -roll triple } : DESERDCT
+{ dict@+ dict@ `dict 2 -roll pair box pair } : DESERDCT
 { 1 u@ ?wrap } : DESERBOL
 
+
 // c -- X
-{
-  <s 4 u@+ swap
-  dup STRPFX =
-    { drop DESERSTR }
-    { dup INTPFX =
-      { drop DESERINT }
-      { dup LSTPFX =
-        { drop DESERLST }
-        { dup DCTPFX =
-          { drop DESERDCT }
-          { dup NULPFX =
-            { drop DESERNUL }
-            { dup BOLPFX =
-              { drop DESERBOL }
-              { abort"WHO ARE YOU???" }
-              cond
-            }
-            cond
-          }
-          cond
-        }
-        cond
-      }
-      cond
-    }
-    cond
-} 'DESER ! // deserialize
+{ <s 4 u@+ swap >switch:<{
+  { STRPFX = } >case:< { DESERSTR } >end-case
+  { INTPFX = } >case:< { DESERINT } >end-case
+  { LSTPFX = } >case:< { DESERLST } >end-case
+  { DCTPFX = } >case:< { DESERDCT } >end-case
+  { NULPFX = } >case:< { DESERNUL } >end-case
+  { BOLPFX = } >case:< { DESERBOL } >end-case
+  { drop -1  } >case:< { "WHO ARE YOU???" abort } >end-case
+}>end-switch } 'DESER ! // deserialize
 
 
 // JSON DUMP FUNCTION ===================================================
@@ -535,50 +523,32 @@ variable 'DESER { 'DESER @ execute } : DESER
 
 variable 'dump-json { 'dump-json @ execute } : dump-json
 
-
 // X -- S
-{
-  dup string?
-    { 34 chr dup rot $+ swap $+ } // dump string
-    { dup integer?
-      { (.) } // dump integer
-      { dup null?
-        { drop "null" }
-        { dup ?bool?
-          { second { "true" } { "false" } cond }
-          { dup {}?
-            { dup {}keys dup count
-            { swap "{ " pair
-              { swap unpair rot dup -rot dump-json $+ ": " $+ -rot over swap {}get
-                drop rot swap dump-json $+ ", " $+ pair
-              }
-              0 []reduce second 0 -2 $sub " }" $+
-            }
-            { 2drop "{}" }
-            cond
-          }
-          { dup tuple?
-            { dup count
-                { "[ "
-                    { dump-json $+ ", " $+ }
-                    0 []reduce 0 -2 $sub " ]" $+
-                }
-                { drop "[]" }
-                cond
-            }
-            { drop }
-            cond
-          }
-          cond
-        }
-        cond
-      }
-      cond
-    }
-    cond
-  }
-  cond
-} 'dump-json !
+{ dup >switch:<{
+  { string?  } >case:< { 34 chr dup rot $+ swap $+ } >end-case // dump string
+  { integer? } >case:< { (.) } >end-case // dump integer
+  { null?    } >case:< { drop "null" } >end-case
+  { ?bool?   } >case:< { second { "true" } { "false" } cond } >end-case
+  { {}?      } >case:< { dup {}keys dup count
+                          { swap "{ " pair
+                            { swap unpair rot dup -rot dump-json $+ ": " $+ -rot over swap {}get
+                              drop rot swap dump-json $+ ", " $+ pair
+                            }
+                            0 []reduce second 0 -2 $sub " }" $+
+                          }
+                          { 2drop "{}" }
+                          cond
+  } >end-case
+  { tuple?   } >case:< { dup count
+                          { "[ "
+                              { dump-json $+ ", " $+ }
+                              0 []reduce 0 -2 $sub " ]" $+
+                          }
+                          { drop "[]" }
+                          cond
+  } >end-case
+  { drop -1  } >case:< { drop } >end-case
+}>end-switch } 'dump-json !
 
 
 /*
@@ -586,15 +556,72 @@ variable 'dump-json { 'dump-json @ execute } : dump-json
   "key1" "value1" {}set
   "key2" 1        {}set
   "key3" ?true    {}set
-  "key4" "value1" 1 ?true 3 tuple {}set
+  "key4" {}new    {}set
 dump-json
 */
-
 // ============================================================================================= //
 // =================================-PART-OF-JSON-PARSER,-WIP-================================== //
 // ============================================================================================= //
 
 
+MetaStack::create(PJ::stk)
+
+{ PJ::stk::print STOP } : STOP+
+
+{ dup >switch:<{
+    { 34 chr $= } >case:< { 0 PJ::stk::pick >switch:<{
+                              { null? } >case:< { drop 2 PJ::stk::dropx "" PJ::stk::push `string PJ::stk::push } >end-case
+                              { `string eq? } >case:< { drop PJ::stk::drop null PJ::stk::push } >end-case
+                              { `string-escaped eq? } >case:< { STOP } >end-case
+                              { drop -1 } >case:< { drop } >end-case  // ignore symbol
+                            }>end-switch 
+    } >end-case
+    { "{" $=    } >case:< { 0 PJ::stk::pick >switch:<{
+                              { dup `string eq? swap `string-escaped eq? or } >case:< { STOP } >end-case
+                              { null? } >case:< { drop 2 PJ::stk::roll {}new []push 2 PJ::stk::-roll } >end-case
+                              { drop -1 } >case:< { drop } >end-case  // ignore symbol
+                            }>end-switch
+    } >end-case
+    { ":" $=    } >case:< { 0 PJ::stk::pick >switch:<{
+                              { dup `string eq? swap `string-escaped eq? or } >case:< { STOP+ } >end-case
+                              { `number eq? } >case:< { STOP+ } >end-case
+                              { null? } >case:< { drop 2 PJ::stk::roll 1 PJ::stk::roll []push 1 PJ::stk::-roll null PJ::stk::push } >end-case
+                              { drop -1 } >case:< { drop } >end-case  // ignore symbol
+                            }>end-switch
+    } >end-case
+    { "," $=    } >case:< { 0 PJ::stk::pick >switch:<{
+                              { dup `string eq? swap `string-escaped eq? or } >case:< { STOP+ } >end-case
+                              { dup null? swap `number eq? or } >case:< { drop
+                                PJ::stk::pop PJ::stk::pop swap `number eq? { (number) 0= abort"error number parsing" } if
+                                PJ::stk::pop []pop dup tuple? { rot []push []push } { swap []pop rot 3 roll {}set []push } cond
+                                PJ::stk::push null null PJ::stk::push PJ::stk::push
+                              } >end-case
+                              { drop -1 } >case:< { drop } >end-case  // ignore symbol
+                            }>end-switch
+    } >end-case
+    { "}" $=    } >case:< { 0 PJ::stk::pick >switch:<{
+                              { dup `string eq? swap `string-escaped eq? or } >case:< { STOP+ } >end-case
+                              { null? } >case:< { drop
+                                PJ::stk::pop PJ::stk::pop swap `number eq? { (number) 0= abort"error number parsing" } if
+                                PJ::stk::pop []pop dup tuple? { rot []push } { swap []pop rot 3 roll {}set } cond
+                                swap PJ::stk::push PJ::stk::push null PJ::stk::push
+                              } >end-case
+                              { drop -1 } >case:< { drop } >end-case  // ignore symbol
+                            }>end-switch
+    } >end-case
+    { drop -1   } >case:< { 0 PJ::stk::pick >switch:<{
+                              { `string eq? } >case:< { 1 PJ::stk::roll swap $+ 1 PJ::stk::-roll } >end-case
+                              { `string-escaped eq? } >case:< { } >end-case
+                              { `number eq? } >case:< { 1 PJ::stk::roll swap $+ 1 PJ::stk::-roll } >end-case
+                              { drop dup (char) dup 47 > swap 58 < and } >case:< {
+                                2 PJ::stk::dropx PJ::stk::push `number PJ::stk::push
+                              } >end-case
+                              { drop -1 } >case:< { drop } >end-case  // ignore unknown
+                            }>end-switch
+    } >end-case
+}>end-switch } : parse-json-inner
+
+/*
 {
   dup 34 chr $= { // "
       over third dup null eq?
@@ -721,17 +748,17 @@ dump-json
       cond
     } if
  } : parse-json-inner
-
+*/
 
 // S -- X
-{ $sybs | null null triple
-  { over third `complete eq?
+{ dup string? not abort"not a string!"
+  $sybs | null null 3 tuple PJ::stk !
+  { 0 PJ::stk::pick `complete eq?
     { drop }
     { parse-json-inner }
     cond
   }
-  []reduce
-  second
+  0 []foreach PJ::stk::drop PJ::stk::pop PJ::stk::drop
 } : parse-json
 
 
@@ -741,7 +768,7 @@ dump-json
 $<<"""
 {
   "name": "John Smith",
-  "age": 34,
+  "age": "34",
   "address": {
     "street": "123 Main St",
     "city": "Anytown",
@@ -767,23 +794,36 @@ $<<"""
 =: input
 
 
+$<<"""
+{
+  "name": "John Smith",
+  "age": 34,
+  "address": {
+    "street": "123 Main St",
+    "city": "Anytown",
+    "state": "CA",
+    "zip": "12345"
+  }
+}
+"""
+=: input
+
 // input parse-json .s cr dump-json type cr
 
 
 // ================================================================================
 
-/*
+
 // X Y -- -1 or 0
 { SER hashu swap SER hashu = } : ==
 
 
 // T T -- -1 or 0
-{ dup count -rot dup count 3 roll =
+{ 2dup []len swap []len =
     { -1 swap pair
-        { rot unpair dup 3 roll [] 3 roll STOP == 2 roll and swap pair }
+        { rot unpair dup 3 roll [] 3 roll == 2 roll and swap pair }
         -1 []reduce unpair drop
     }
     { 2drop 0 }
     cond
-} : []cmp 
-*/
+} : []cmp
