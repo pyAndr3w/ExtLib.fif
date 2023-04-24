@@ -21,10 +21,12 @@
 
 library ExtLib.fif // version 1.0.0
 
+"TonUtil.fif" include
 
-// =======================================================================
-// ===============================-Ext-Lib-===============================
-// =======================================================================
+
+// ============================================================================================= //
+// ==========================================-Ext-Lib-========================================== //
+// ============================================================================================= //
 
 
 // x -- drop x times
@@ -35,64 +37,237 @@ library ExtLib.fif // version 1.0.0
 { .s 0 halt } : STOP
 
 
-// =======================================================================
-// ==============================-Tuple-Lib-==============================
-// =======================================================================
+// s -- B
+{ B{} swap
+  { dup dup sbits 8 / B@ rot swap B+ swap dup srefs
+    { ref@ <s 0 }
+    { drop -1 }
+    cond
+  }
+  until
+} : read-long-bytes
+
+{ read-long-bytes B>$ } : read-long-string
 
 
-// T f -- f(T'0), f(T'1), f(T'2), ..., f(T'n)
-{ swap dup count 0
-  { over over [] 3 pick execute 1+ }
-2 roll times 3 dropx } : []foreach
+// "word" -- 
+{ dup find { nip execute } { " unknown word: " swap $+ abort } cond } : $call
 
 
-// T f --> T[n] = f(T[n])
-{ swap dup count 0
-  { dup 2 pick swap [] 3 pick execute rot swap 2 pick []= swap 1+ }
-2 roll times rot 2drop  } : []map
+// value "name" -- 
+{ swap 1 'nop does swap 0 (create) } : $constant
+
+
+// x y -- "x" "y"
+{ (.) swap (.) swap } : (.)(.)
+
+
+// x y -- "x" x"y"
+{ swap (.) swap (x.) } : (.)(x.)
+
+
+// wc addr -- S
+{ (.)(x.) swap +":" swap $+ } : $raw-addr
+
+
+// x -- sleep ~x seconds
+{ now + { dup now < } until drop } : sleep
+
+
+// ================================================================================
+
+
+/*
+_ split_depth:(Maybe (## 5)) special:(Maybe TickTock)
+  code:(Maybe ^Cell) data:(Maybe ^Cell)
+  library:(HashmapE 256 SimpleLib) = StateInit;
+
+  simple_lib$_ public:Bool root:^Cell = SimpleLib;
+*/
+
+// code data libs -- c
+{ <b b{00} s, 3 roll dict, rot dict, swap dict, b> } : >state-init
+
+
+// ============================================================================================= //
+// ======================================-Simple-Tuple-Lib-===================================== //
+// ============================================================================================= //
+
+
+// T -- x
+{ count } : []len
+
+
+// T X -- T'
+{ , } : []push
+
+
+// T -- T' X
+{ tpop } : []pop
+
+
+// T X -- T[X....]
+{ swap explode 1 + tuple } : []push-back
+
+
+// T[X....] -- T[....] X
+{ explode 1 - tuple swap } : []pop-back
+
+
+// T x X -- T[x] = X
+{ -rot []push swap []push explode dup 3 roll - 1- rot swap -roll 1- tuple } : []insert
+
+
+{ } : []remove
+{ } : []pick
+{ } : []-pick
+{ } : []roll
+{ } : []-roll
+{ } : []swap
+{ } : []drop
+
+
+// -- Tb
+{ `tuple-builder } : <[
+
+
+// Tb X0, X1, X2, ..., Xn -- T
+{ | swap { dup `tuple-builder eq? not } { []push-back swap } while drop } : ]>T
+
+
+// T -- T[-1]
+{ dup count 1- [] } : []last
+
+
+// ============================================================================================= //
+// ======================================-Meta-Stack-Lib-======================================= //
+// ============================================================================================= //
+
+
+{ char ) word { dup } 18 times
+    | box swap $constant
+    1 { dup $call @ rot []push swap $call ! } does swap +"::push" 0 (create)
+    1 { dup $call @ []pop -rot swap $call ! } does swap +"::pop" 0 (create)
+    1 { +"::pop" $call drop } does swap +"::drop" 0 (create)
+    1 { +"::drop" { dup $call } rot times drop } does swap +"::dropx" 0 (create)
+    1 { dup $call @ []len 2 pick > not abort" unknown index" dup -rot +"::push" $call dup dup $call @ explode swap 1+ roll swap 1- tuple swap $call ! +"::pop" $call } does swap +"::roll" 0 (create)
+    1 { $call @ dup []len rot - 1- [] } does swap +"::pick" 0 (create)
+    1 { dup $call @ swap 3 -roll dup []len rot - rot []insert swap $call ! } does swap +"::-roll" 0 (create)
+    1 { 2 pick 3 -roll +"::-roll" $call } does swap +"::-pick" 0 (create)
+    1 { dup +" => " type $call @ explode { dup roll .dump 1- } over times drop cr } does swap +"::print" 0 (create)
+0 'nop } ::_ MetaStack::create(
+
+
+MetaStack::create(ExtLib::stk)
+
+
+// ============================================================================================= //
+// ======================================-Switch-Case-Lib-====================================== //
+// ============================================================================================= //
+
+
+MetaStack::create(SC::stk)
+
+
+{ SC::stk::print STOP } : STOP+
+
+
+{ | swap , SC::stk::push `switch } : >switch:<{
+
+
+{ swap dup `switch eq? not abort"invalid switch-case syntax"
+  SC::stk::push 1 SC::stk::pick first swap execute
+  SC::stk::pop SC::stk::pop rot []push SC::stk::push `case
+} : >case:<
+
+
+{ swap `case eq? not abort"invalid switch-case syntax"
+  SC::stk::pop dup []len 2 = swap []pop rot and
+    { -1 []push swap []push }
+    { nip }
+    cond SC::stk::push
+} : >end-case
+
+
+{ `switch eq? not abort"invalid switch-case syntax"
+  SC::stk::pop []pop nip execute
+} : }>end-switch
+
+
+// ============================================================================================= //
+// =====================================-Advanced-Tuple-Lib-==================================== //
+// ============================================================================================= //
+
+
+// T f x -- x == -1 ? f(T[n], n) : f(T[n])
+{
+  dup dup 0 = swap -1 = or not abort"incorrect argument" ExtLib::stk::push // x
+  ExtLib::stk::push ExtLib::stk::push 0 ExtLib::stk::push                  // x f T n
+  { 1 ExtLib::stk::pick 0 ExtLib::stk::pick tuck []
+    3 ExtLib::stk::pick 0 = { nip } { swap } cond 2 ExtLib::stk::pick execute
+    ExtLib::stk::pop 1+ ExtLib::stk::push
+  }
+  1 ExtLib::stk::pick count times 4 ExtLib::stk::dropx
+} : []foreach
+
+
+// T X f x --> x == -1 ? X = f(X, T[n], n) : X = f(X, T[n])
+{
+  2 roll ExtLib::stk::push swap ExtLib::stk::push
+  { 5 ExtLib::stk::roll 3 ExtLib::stk::pick
+    { -rot }
+    { swap }
+    cond
+    4 ExtLib::stk::pick execute 5 ExtLib::stk::-roll
+  } swap []foreach
+  ExtLib::stk::drop ExtLib::stk::pop 
+} : []reduce
 
 
 // T f -- newT
-{ | rot
-  { dup 6 pick execute
-    { 4 roll swap , 3 -roll }
-    { drop }
-  cond }
-[]foreach nip } : []filter
+{
+  ExtLib::stk::push |
+  { dup 5 ExtLib::stk::pick execute { []push } { drop } cond } 0
+  []reduce ExtLib::stk::drop
+} : []filter
 
 
-// T X f --> X = f(X, T[n])
-{ rot
-  { 5 roll swap 5 pick execute 4 -roll }
-[]foreach drop } : []reduce
+// T f x --> x == -1 ? T[n] = f(T[n], n) : T[n] = f(T[n])
+{
+  swap ExtLib::stk::push |
+  { 3 ExtLib::stk::pick
+    { rot }
+    { swap }
+    cond
+    ExtLib::stk::push 6 ExtLib::stk::pick execute ExtLib::stk::pop swap []push
+  } rot []reduce
+  ExtLib::stk::drop
+} : []map
 
 
 // T -- x
-{ 0 { + } []reduce } : []sum
+{ 0 { + } 0 []reduce } : []sum
 
 
 // T -- x
-{ 1 { * } []reduce } : []mul
+{ 1 { * } 0 []reduce } : []mul
 
 
 // T -- x
 { dup count swap []sum swap / } : []avg
 
 
-// =======================================================================
-// ==============================-Text-Lib-===============================
-// =======================================================================
+// ============================================================================================= //
+// =========================================-Text-Lib-========================================== //
+// ============================================================================================= //
 
 
 // new string declaration
-{ char } word } :_ ${
+{ char } word 1 'nop } ::_ ${
+
 
 // S x -- S'
-{ $| 1 $| rot 2drop } : $at
-
-
-// S x y -- S'
-{ over - -rot $| rot 1+ $| rot 2drop } : $sub
+{ dup 0 < { over $len swap + } if $| 1 $| rot 2drop } : $at
 
 
 // S x -- S*x
@@ -103,87 +278,512 @@ library ExtLib.fif // version 1.0.0
 { | swap { 1 $| -rot , swap } 1 pick $len 1- times , } : $sybs
 
 
+// S x y -- S'
+{ dup 0 < { 2 pick $len + } if swap
+  dup 0 < { 2 pick $len + } if swap
+  ExtLib::stk::push ExtLib::stk::push $sybs |
+  { dup 6 ExtLib::stk::pick 5 ExtLib::stk::pick rot <= swap rot > and
+    { []push }
+    { drop }
+    cond
+  } -1 []reduce
+  2 ExtLib::stk::dropx "" { $+ } 0 []reduce
+} : $sub
+
+
 // S x -- S[0:0+x], S[1:1+x], S[2:2+x], ..., S[n:n+x]
 { | -rot 1- 0
-  { 2dup + 1 pick 4 pick -rot swap $sub 4 roll swap , 3 -roll 1+ }
+  { 2dup + 1 pick 4 pick -rot swap 1+ $sub 4 roll swap , 3 -roll 1+ }
 3 pick $len 3 pick - times 3 dropx } : $>>sybs
 
 
-// S f -- f(S'0), f(S'1), f(S'2), ..., f(S'n)
-{ swap
-  { 1 $| swap 2 pick execute }
-1 pick $len times 2drop } : $foreach
-
-
 // T(S) S1 -- S
-{ "" rot
-  {  4 roll 5 pick rot swap $+ $+ 3 -roll }
-[]foreach swap $len over $len swap - 1- 0 swap $sub } : $join
-
-
-// S f --> S[n] = f(S[n])
-{ swap $sybs swap []map "" $join  } : $map
-
-
-// S S1 -- x? ?
-{ dup $len -1 3 roll 2 roll $>>sybs
-  { 4 pick -1 =
-    { 5 pick $=
-      { dup 4 roll drop 3 -roll }
-    if }
-    { drop }
-  cond }
-[]foreach nip dup 0 > dup { nip } ifnot } : $find
+{ ExtLib::stk::push ""
+  { 5 ExtLib::stk::pick $+ $+ } 0
+  []reduce ExtLib::stk::drop
+} : $join
 
 
 // S S1 -- T
-{ dup $len rot swap $>>sybs | swap
-  { 5 pick $=
-    { 3 roll over , 3 -roll }
-   if }
-[]foreach nip } : $findAll
+{ dup $len swap ExtLib::stk::push $>>sybs |
+  { swap 5 ExtLib::stk::pick $= { []push } { drop } cond 
+  } -1 []reduce ExtLib::stk::drop
+} : $findAll
+
+
+// S S1 -- x -1 or 0
+{ $findAll dup count
+  { 0 [] -1 }
+  { drop 0 }
+  cond
+} : $find
+
+
+// S S' -- x -1 or 0
+{ $findAll dup []len { []last -1 } { drop 0 } cond } : $findLast
 
 
 // S S' -- x
-{ $findAll count } : $subcnt
+{ $findAll []len } : $subcnt
 
 
 // S S1 -- T(S)
 { dup $len 2 -roll | 3 -roll 2dup $subcnt
   { 2dup $find
     { rot swap $| 3 pick $| nip -rot 4 roll swap , 3 -roll }
-  if }
-swap times rot 2drop , } : $split
+    if
+  } swap times rot 2drop ,
+} : $split
 
-{ char ) word dup $len 2 - 0 swap $sub $split } :_ $split("
+
+// syntax for split
+{ char } word $split 1 'nop } ::_ $split{
 
 
 // S S1 S2 -- S
 { over $len 3 roll 3 roll over swap $find
   { $| rot $| nip rot swap $+ $+ }
   { -rot 2drop }
-cond } : $replace
+  cond
+} : $replace
 
 
 // S S1 S2 -- S
-{ -rot $split swap $join  } : $replaceAll
+{ -rot 2dup $subcnt dup 0 >
+  { 3 roll swap
+    { rot 2 pick 2 pick $replace -rot }
+    swap times 2drop
+  }
+  { 2drop nip }
+  cond
+} : $replaceAll
 
 
 // S T -- S
-{ 0 -rot
-  { 4 roll "{}" rot $replace 3 -roll }
-[]foreach nip } : $format
+{ swap { "${}" swap $replace } 0 []reduce } : $format
 
 
 // syntax for $at and $sub
 { char ] word ":" $split dup count dup dup 2 > swap 1 < or
   { abort"incorrect index count" }
-if swap
+  if swap
   { (number)
     { abort"incorrect index" }
-  ifnot }
-[]map swap 2 =
-  { unpair $sub }
-  { first $at }
-cond } :_ $[
+    ifnot
+  }
+  0 []map swap 2 =
+    { unpair $sub }
+    { first $at }
+    cond
+1 'nop } ::_ $[
 
+
+// ============================================================================================= //
+// =========================================-JSON-Lib-========================================== //
+// ============================================================================================= //
+
+
+// Declar funcs (for recursion)
+variable 'SER { 'SER @ execute } : SER
+variable 'DESER { 'DESER @ execute } : DESER
+
+
+// DICTS =================================================================
+
+
+// -- dict
+{ `dict dictnew dictnew triple } : {}new // key value store
+
+
+// dict key value -- dict
+{ SER swap SER dup hash dup // dict value key key-hash
+    4 roll dup second rot // value key dict D-value key-hash
+    5 roll <s -rot swap 256 udict! drop 1 []= // key key-hash dict
+    dup third swap 3 -roll rot <s -rot 256 udict! drop 2 []= // dict
+} : {}set
+
+
+// dict key -- value -1 or 0
+{ SER hash swap second 256 udict@ dup
+    { swap s>c DESER swap }
+    if
+} : {}get
+
+
+{ } : {}foreach
+{ } : {}reduce
+{ } : {}map
+
+
+{ untriple -rot 2drop | swap 256 { s>c DESER rot swap , swap } dictforeach drop } : {}keys
+
+
+{ dup tuple? { dup count { first `dict eq? } { drop 0 } cond } { drop 0 } cond } : {}?
+
+
+// BOOLEANS ==============================================================
+
+
+{ `bool -1 pair } : ?true
+{ `bool 0 pair } : ?false
+
+
+{ { ?true } { ?false } cond } : ?wrap
+
+
+{ dup tuple? { dup count { first `bool eq? } { drop 0 } cond } { drop 0 } cond } : ?bool?
+
+
+{ dup ?bool?
+    { second }
+    { abort"is not bool" }
+    cond
+} : ?unwrap
+
+
+// SUPPORTING FUNCTIONS for DICT =========================================
+
+
+0xF =: NULPFX
+0x1 =: STRPFX
+0x2 =: INTPFX
+0x3 =: LSTPFX
+0x4 =: DCTPFX
+0x5 =: BOLPFX
+
+
+{ drop <b NULPFX 4 u, b> } : SERNUL
+{ <b STRPFX 4 u, swap 127 append-long-string b> } : SERSTR
+{ <b INTPFX 4 u, swap 257 i, b> } : SERINT
+{ dictnew { swap SER <s swap rot 1023 udict! drop } -1 []reduce <b LSTPFX 4 u, swap ref, b> } : SERLST
+{ untriple swap <b DCTPFX 4 u, swap ref, swap ref, b> nip } : SERDCT
+{ ?unwrap <b BOLPFX 4 u, swap 1 i, b> } : SERBOL
+
+
+// X -- c
+{
+  dup null?
+    { SERNUL }
+    { dup string?
+      { SERSTR }
+      { dup integer?
+        { SERINT }
+        { dup tuple?
+          { dup count
+            { dup first dup `dict eq?
+              { drop SERDCT }
+              { dup `bool eq?
+                { drop SERBOL }
+                { drop SERLST }
+                cond
+              }
+              cond
+            }
+            { SERLST }
+            cond
+          }
+          { abort"WHO ARE YOU???" }
+          cond
+        }
+        cond
+      }
+      cond
+    }
+    cond
+} 'SER ! // serialize
+
+
+{ drop null } : DESERNUL
+{ read-long-string } : DESERSTR
+{ 257 i@ } : DESERINT
+{ ref@ | swap 1023 { dup integer? { nip s>c DESER swap over , nip 1 } ifnot } dictforeach drop } : DESERLST
+{ ref@+ swap ref@ `dict 2 -roll triple } : DESERDCT
+{ 1 u@ ?wrap } : DESERBOL
+
+// c -- X
+{
+  <s 4 u@+ swap
+  dup STRPFX =
+    { drop DESERSTR }
+    { dup INTPFX =
+      { drop DESERINT }
+      { dup LSTPFX =
+        { drop DESERLST }
+        { dup DCTPFX =
+          { drop DESERDCT }
+          { dup NULPFX =
+            { drop DESERNUL }
+            { dup BOLPFX =
+              { drop DESERBOL }
+              { abort"WHO ARE YOU???" }
+              cond
+            }
+            cond
+          }
+          cond
+        }
+        cond
+      }
+      cond
+    }
+    cond
+} 'DESER ! // deserialize
+
+
+// JSON DUMP FUNCTION ===================================================
+
+
+variable 'dump-json { 'dump-json @ execute } : dump-json
+
+
+// X -- S
+{
+  dup string?
+    { 34 chr dup rot $+ swap $+ } // dump string
+    { dup integer?
+      { (.) } // dump integer
+      { dup null?
+        { drop "null" }
+        { dup ?bool?
+          { second { "true" } { "false" } cond }
+          { dup {}?
+            { dup {}keys dup count
+            { swap "{ " pair
+              { swap unpair rot dup -rot dump-json $+ ": " $+ -rot over swap {}get
+                drop rot swap dump-json $+ ", " $+ pair
+              }
+              0 []reduce second 0 -2 $sub " }" $+
+            }
+            { 2drop "{}" }
+            cond
+          }
+          { dup tuple?
+            { dup count
+                { "[ "
+                    { dump-json $+ ", " $+ }
+                    0 []reduce 0 -2 $sub " ]" $+
+                }
+                { drop "[]" }
+                cond
+            }
+            { drop }
+            cond
+          }
+          cond
+        }
+        cond
+      }
+      cond
+    }
+    cond
+  }
+  cond
+} 'dump-json !
+
+
+/*
+{}new
+  "key1" "value1" {}set
+  "key2" 1        {}set
+  "key3" ?true    {}set
+  "key4" "value1" 1 ?true 3 tuple {}set
+dump-json
+*/
+
+// ============================================================================================= //
+// =================================-PART-OF-JSON-PARSER,-WIP-================================== //
+// ============================================================================================= //
+
+
+{
+  dup 34 chr $= { // "
+      over third dup null eq?
+        { 2drop "" 1 []= `string 2 []= }
+        { dup `string eq?
+          { 2drop null 2 []= }
+          { dup `string-escaped eq?
+            { drop over second swap $+ 1 []= `string 2 []= }
+            { }  // ignore symbol
+            cond
+          }
+          cond
+        }
+        cond
+    } { `cont } cond
+  dup `cont eq? { over "{" $=
+    { drop over third dup dup `string eq? swap `string-escaped eq? or
+        { drop over second swap $+ 1 []= `string 2 []= }
+        { dup null?
+          { 2drop dup first {}new , 0 []= }
+          { 2drop }  // ignore symbol
+          cond
+        }
+        cond
+    } if } if
+  dup `cont eq? { over "[" $=
+    { drop over third dup dup `string eq? swap `string-escaped eq? or
+        { drop over second swap $+ 1 []= `string 2 []= }
+        { dup null?
+          { 2drop dup first | , 0 []= }
+          { 2drop }  // ignore symbol
+          cond
+        }
+        cond
+    } if } if
+  dup `cont eq? { over "}" $=
+    { drop over third dup dup `string eq? swap `string-escaped eq? or
+        { drop over second swap $+ 1 []= `string 2 []= }
+        { dup null?
+          { 2drop untriple rot []pop swap []pop rot 4 roll {}set rot triple }
+          { 2drop }  // ignore symbol
+          cond
+        }
+        cond
+    } if } if
+  dup `cont eq? { over "]" $=
+    { drop over third dup dup `string eq? swap `string-escaped eq? or
+        { drop over second swap $+ 2 []= `string 3 []= }
+        { dup null?
+          { 2drop untriple rot []pop 3 roll , rot triple }
+          { 2drop }  // ignore symbol
+          cond
+        }
+        cond
+    } if } if
+  dup `cont eq? { over "," $=
+    { drop over third dup dup `string eq? swap `string-escaped eq? or
+        { drop over second swap $+ 2 []= `string 3 []= }
+        { dup dup null? swap `number eq? or
+          { 2drop untriple `number eq? { (number) { abort"error number parsing" } ifnot } if swap []pop dup tuple?
+            { rot , , null null triple }
+            { swap []pop rot 3 roll {}set , null null triple }
+            cond
+          }
+          { 2drop }  // ignore symbol
+          cond
+        }
+        cond
+    } if } if
+  dup `cont eq? { over ":" $=
+    { drop over third dup dup `string eq? swap `string-escaped eq? or
+        { drop over second swap $+ 2 []= `string 3 []= }
+        { dup null?
+          { 2drop untriple -rot , swap null triple }
+          { 2drop }  // ignore symbol
+          cond
+        }
+        cond
+    } if } if
+  dup `cont eq? { over 92 chr $=
+    { drop over third dup `string eq?
+        { 2drop `string-escaped 2 []= }
+        { dup `string-escaped eq?
+          { drop over second swap $+ 1 []= `string 2 []= }
+          { 2drop }  // ignore symbol
+          cond
+        }
+        cond
+    } if } if
+  dup `cont eq? { over (char) dup 128 > swap 32 < or
+    { drop over second dup `string eq?
+        { drop over second swap $+ 1 []= }
+        { dup `string-escaped eq?
+          { 2drop `string 2 []= }
+          { 2drop }  // ignore symbol
+          cond
+        }
+        cond
+    } if } if
+  dup `cont eq?
+    { drop over third dup `string eq?
+      { drop over second swap $+ 1 []= }
+      { dup `string-escaped eq?
+        { drop dup "n" $=
+          { drop dup second 10 chr }
+          { dup "t" $=
+            { drop dup second 9 chr }
+            { over second swap }
+            cond
+          }
+          cond $+ 1 []= `string 2 []=
+        }
+        { dup `number eq?
+          { drop swap untriple swap 3 roll $+ swap triple }
+          { drop dup (char) dup 47 > swap 58 < and
+            { swap untriple 2drop swap `number triple }
+            { drop } // ignore unknown
+            cond
+          }
+          cond
+        }
+        cond
+      }
+      cond
+    } if
+ } : parse-json-inner
+
+
+// S -- X
+{ $sybs | null null triple
+  { over third `complete eq?
+    { drop }
+    { parse-json-inner }
+    cond
+  }
+  []reduce
+  second
+} : parse-json
+
+
+
+// cr
+
+$<<"""
+{
+  "name": "John Smith",
+  "age": 34,
+  "address": {
+    "street": "123 Main St",
+    "city": "Anytown",
+    "state": "CA",
+    "zip": "12345"
+  },
+  "phone_numbers": [
+    {
+      "type": "home",
+      "number": "555-1234"
+    },
+    {
+      "type": "work",
+      "number": "555-5678"
+    }
+  ],
+  "emails": [
+    "john.smith@example.com",
+    "jsmith@example.com"
+  ]
+}
+"""
+=: input
+
+
+// input parse-json .s cr dump-json type cr
+
+
+// ================================================================================
+
+/*
+// X Y -- -1 or 0
+{ SER hashu swap SER hashu = } : ==
+
+
+// T T -- -1 or 0
+{ dup count -rot dup count 3 roll =
+    { -1 swap pair
+        { rot unpair dup 3 roll [] 3 roll STOP == 2 roll and swap pair }
+        -1 []reduce unpair drop
+    }
+    { 2drop 0 }
+    cond
+} : []cmp 
+*/
