@@ -66,10 +66,6 @@ library ExtLib.fif // version 1.0.0
 { swap (.) swap (x.) } : (.)(x.)
 
 
-// wc addr -- S
-{ (.)(x.) swap +":" swap $+ } : $raw-addr
-
-
 // x -- sleep ~x seconds
 { now + { dup now < } until drop } : sleep
 
@@ -385,6 +381,14 @@ MetaStack::create(SC::stk)
     { first $at }
     cond
 1 'nop } ::_ $[
+
+
+// wc addr -- S
+{ (.)(x.) dup $len 64 swap - dup 0 >
+  { "0" swap $mul swap $+ }
+  { drop }
+  cond swap +":" swap $+
+} : $raw-addr
 
 
 // ============================================================================================= //
@@ -827,3 +831,23 @@ $<<"""
     { 2drop 0 }
     cond
 } : []cmp
+
+
+// T -- c
+{ <b b>
+  { dup dup tuple? not abort"NOT A TUPLE!!!" []len 1 < abort"INCORRECT TLEN!!!"
+    dup first >switch:<{
+      { `send       eq? } >case:< { dup []len 3 <> abort"INCORRECT TLEN!!!" untriple rot drop
+                                    <b x{0ec3c86d} s, rot 8 u, rot ref, swap ref, b>
+                                  } >end-case
+      { `code       eq? } >case:< { // TODO
+                                  } >end-case
+      { `set-lib    eq? } >case:< { // TODO
+                                  } >end-case
+      { `change-lib eq? } >case:< { // TODO
+                                  } >end-case
+      {  drop -1        } >case:< { drop } >end-case
+    }>end-switch
+  }
+  0 []reduce
+} : create-actions
